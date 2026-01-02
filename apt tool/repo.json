@@ -1,0 +1,105 @@
+{
+  "packages": [
+    {
+      "name": "sqlmap",
+      "url": "https://github.com/sqlmapproject/sqlmap/archive/refs/heads/master.zip"
+    },
+    { 
+      "name": "nmap",
+      "url": "https://github.com/nmap/nmap/archive/refs/heads/master.zip" 
+    },
+    {
+      "name": "hydra",
+      "url": "https://github.com/vanhauser-thc/thc-hydra/archive/refs/heads/master.zip" 
+    },
+    {
+      "name": "metasploit", 
+      "url": "https://github.com/rapid7/metasploit-framework/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "aircrack-ng",
+      "url": "https://github.com/aircrack-ng/aircrack-ng/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "john",
+      "url": "https://github.com/openwall/john/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "nikto",
+      "url": "https://github.com/sullo/nikto/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "dirsearch",
+      "url": "https://github.com/maurosoria/dirsearch/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "gobuster",
+      "url": "https://github.com/OJ/gobuster/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "masscan", 
+      "url": "https://github.com/robertdavidgraham/masscan/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "wfuzz", 
+      "url": "https://github.com/xmendez/wfuzz/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "amass", 
+      "url": "https://github.com/owasp-amass/amass/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "theharvester", 
+      "url": "https://github.com/laramies/theHarvester/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "ffuf", 
+      "url": "https://github.com/ffuf/ffuf/archive/refs/heads/master.zip" 
+    },
+    { 
+      "name": "enum4linux", 
+      "url": "https://github.com/CiscoCXSecurity/enum4linux/archive/refs/heads/master.zip" 
+    },
+    {
+      "name": "netcat",
+      "url": "https://github.com/diegocr/netcat/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "tcpdump",
+      "url": "https://github.com/the-tcpdump-group/tcpdump/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "wireshark",
+      "url": "https://github.com/wireshark/wireshark/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "burpsuite",
+      "url": "https://github.com/xl7dev/BurpSuite/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "zaproxy",
+      "url": "https://github.com/zaproxy/zaproxy/archive/refs/heads/main.zip"
+    },
+    {
+      "name": "ettercap",
+      "url": "https://github.com/Ettercap/ettercap/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "responder",
+      "url": "https://github.com/lgandx/Responder/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "impacket",
+      "url": "https://github.com/fortra/impacket/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "crackmapexec",
+      "url": "https://github.com/byt3bl33d3r/CrackMapExec/archive/refs/heads/master.zip"
+    },
+    {
+      "name": "bloodhound",
+      "url": "https://github.com/BloodHoundAD/BloodHound/archive/refs/heads/master.zip"
+    }
+    
+  ]
+}
