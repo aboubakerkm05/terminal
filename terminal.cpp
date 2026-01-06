@@ -5,10 +5,9 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-
+#define KALI_BLUE (FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY | FOREGROUND_INTENSITY)
 using namespace std;
 bool isRoot = false;
-/* ================= Font fix ================= */
 #ifndef CONSOLE_FONT_INFOEX
 typedef struct _CONSOLE_FONT_INFOEX {
     ULONG cbSize;
@@ -23,10 +22,15 @@ extern "C" BOOL WINAPI SetCurrentConsoleFontEx(
     HANDLE, BOOL, CONSOLE_FONT_INFOEX*
 );
 #endif
-/* ================= Console ================= */
+
 HANDLE hOut;
 SHORT inputStartX = 0;
+string getComputerNameStr();
+string getDisplayPath(bool isRoot);
+bool actpath = false;
+
 bool autocompleteEnabled = true;
+void fixWrappedCursor();
 void executeCommand(const string& input);
 void setTitle() {
     SetConsoleTitleA("Terminal");
@@ -46,8 +50,17 @@ void setBetterFont() {
     wcscpy(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(hOut, FALSE, &cfi);
 }
+std::string stripExt(const std::string& name) {
+    size_t p = name.find_last_of('.');
+    if (p == std::string::npos) return name;
+    return name.substr(0, p);
+}
+bool endsWith(const std::string& s, const std::string& e) {
+    return s.size() >= e.size() &&
+           s.compare(s.size() - e.size(), e.size(), e) == 0;
+}
 
-/* ================= Prompt ================= */
+
 const string PROMPT = "kali@user:~$ ";
 bool isRunningAsAdmin() {
     BOOL isAdmin = FALSE;
@@ -77,31 +90,92 @@ void runAsAdmin(const string& cmd) {
     );
 }
 
-
-
-void drawPrompt() {
-    CONSOLE_SCREEN_BUFFER_INFO cs;
-    GetConsoleScreenBufferInfo(hOut, &cs);
-    if(isRoot){
-        setColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-        cout<< "kali@root";
-        resetColor();
-        cout<< ":~$ ";
-    }
-    else{
-    setColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    cout << "kali@user";
-    resetColor();
-    cout << ":~$ ";
-    }
-    inputStartX = cs.dwCursorPosition.X + PROMPT.size();
+string getHomeDir() {
+    char buf[MAX_PATH];
+    GetEnvironmentVariableA("USERPROFILE", buf, MAX_PATH);
+    return buf;
 }
 
-/* ================= Input ================= */
+SHORT promptStartY;
+
+void drawPrompt()
+{
+    CONSOLE_SCREEN_BUFFER_INFO cs;
+    GetConsoleScreenBufferInfo(hOut, &cs);
+
+    SHORT startX = cs.dwCursorPosition.X;
+    SHORT startY = cs.dwCursorPosition.Y;
+
+    string pc = getComputerNameStr();
+    string path = getDisplayPath(isRoot);
+
+    setColor(KALI_BLUE);
+    cout << "(";
+    resetColor();
+
+    if (isRoot) {
+        setColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+        cout << "root@"<<pc;
+    } else {
+        setColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+        cout << "kali@"<<pc;
+    }
+
+    resetColor();
+
+    setColor(KALI_BLUE);
+    cout << ")-[";
+    resetColor();
+    if (isRoot){
+    cout << path;
+    
+    }
+    else{
+        if (actpath){
+            cout << path;
+        }
+        else{
+            cout << "~";
+        }
+    }
+    resetColor();
+
+    setColor(KALI_BLUE);
+    cout << "]";
+    resetColor();
+
+    GetConsoleScreenBufferInfo(hOut, &cs);
+    SHORT cornerX = cs.dwCursorPosition.X;
+
+    cout << "\n";
+
+    COORD promptPos{startX, (SHORT)(startY + 1)};
+    SetConsoleCursorPosition(hOut, promptPos);
+
+    setColor(KALI_BLUE);
+    cout << "-";
+    resetColor();
+
+    if (isRoot) {
+        setColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+        cout << "# ";
+    } else {
+        setColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+        cout << "$ ";
+    }
+
+    resetColor();
+
+    GetConsoleScreenBufferInfo(hOut, &cs);
+    inputStartX = cs.dwCursorPosition.X;
+    promptStartY = cs.dwCursorPosition.Y;
+}
+
+
 string buffer, ghost;
 size_t cursorPos = 0;
 
-/* ================= Utils ================= */
+
 bool fileExists(const string& p) {
     return GetFileAttributesA(p.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
@@ -121,17 +195,26 @@ vector<string> splitPATH() {
 }
 
 bool running = true;
-/* ================= Autocomplete ================= */
+
 vector<string> baseCmds = {"clear","pwd","ping ","whoami","ifconfig","cls","dir","ls","bash","cd","sudo su","apt","apt install ","apt search ","apt list","apt uninstall"};
 
 vector<string> currentDirFiles() {
     vector<string> r;
     WIN32_FIND_DATAA fd;
+    string display;
     HANDLE h = FindFirstFileA("*", &fd);
     if (h == INVALID_HANDLE_VALUE) return r;
     do {
-        if (string(fd.cFileName) != "." && string(fd.cFileName) != "..")
-            r.push_back(fd.cFileName);
+        string n = fd.cFileName;
+        if (string(fd.cFileName) != "." && string(fd.cFileName) != ".."){
+            if (endsWith(fd.cFileName, ".exe") || endsWith(fd.cFileName, ".bat")){
+                display = stripExt(fd.cFileName);
+                r.push_back(display);
+            }
+            else{
+                r.push_back(n);
+            }
+        }
     } while (FindNextFileA(h, &fd));
     FindClose(h);
     return r;
@@ -152,36 +235,111 @@ void updateGhost() {
         }
     }
 }
+string getComputerNameStr() {
+    char name[MAX_PATH];
+    DWORD size = MAX_PATH;
+    if (GetComputerNameA(name, &size))
+        return name;
+    return "kali";
+}
+string getDisplayPath(bool rootMode)
+{
+    char cwd[MAX_PATH];
+    GetCurrentDirectoryA(MAX_PATH, cwd);
 
-/* ================= Redraw ================= */
-void redrawLine() {
+    string cwdStr = cwd;
+    string home = getHomeDir();
+
+    if (!rootMode)
+    {
+        if (_stricmp(cwdStr.c_str(), home.c_str()) == 0)
+            return "~";
+
+        if (cwdStr.size() < home.size())
+            return "~";
+
+        if (_stricmp(cwdStr.substr(0, home.size()).c_str(), home.c_str()) == 0)
+        {
+            if (cwdStr.size() == home.size())
+                return "~";
+
+            string rest = cwdStr.substr(home.size() + 1);
+            size_t pos = rest.find_last_of("\\/");
+            return pos == string::npos ? rest : rest.substr(pos + 1);
+        }
+
+        size_t pos = cwdStr.find_last_of("\\/");
+        return pos == string::npos ? cwdStr : cwdStr.substr(pos + 1);
+    }
+
+    replace(cwdStr.begin(), cwdStr.end(), '\\', '/');
+    return cwdStr;
+}
+
+
+void redrawLine()
+{
     CONSOLE_SCREEN_BUFFER_INFO cs;
     GetConsoleScreenBufferInfo(hOut, &cs);
 
-    COORD start{inputStartX, cs.dwCursorPosition.Y};
+    SHORT width = cs.dwSize.X;
+
+    int totalLen = (int)buffer.size() + (int)ghost.size();
+    int linesUsed = (inputStartX + totalLen) / width + 1;
+
+    DWORD written;
+
+    for (int i = 0; i < linesUsed; ++i)
+    {
+        COORD pos;
+        DWORD count;
+
+        if (i == 0)
+        {
+
+            pos = { inputStartX, (SHORT)(promptStartY) };
+            count = width - inputStartX;
+        }
+        else
+        {
+
+            pos = { 0, (SHORT)(promptStartY + i) };
+            count = width;
+        }
+
+        FillConsoleOutputCharacterA(
+            hOut,
+            ' ',
+            count,
+            pos,
+            &written
+        );
+    }
+
+    COORD start{ inputStartX, promptStartY };
     SetConsoleCursorPosition(hOut, start);
 
-    DWORD w;
-    FillConsoleOutputCharacterA(
-        hOut, ' ',
-        cs.dwSize.X - inputStartX,
-        start, &w
-    );
-
-    SetConsoleCursorPosition(hOut, start);
     cout << buffer;
 
-    if (!ghost.empty()) {
+    if (!ghost.empty())
+    {
         setColor(FOREGROUND_INTENSITY);
         cout << ghost;
         resetColor();
     }
 
-    COORD cur{(SHORT)(inputStartX + cursorPos), start.Y};
+    int cursorIndex = inputStartX + (int)cursorPos;
+
+    COORD cur;
+    cur.X = cursorIndex % width;
+    cur.Y = promptStartY + (cursorIndex / width);
+
     SetConsoleCursorPosition(hOut, cur);
 }
 
-/* ================= ls / dir ================= */
+
+
+
 void listDir() {
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA("*", &fd);
@@ -194,10 +352,12 @@ void listDir() {
         bool isDir = fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
         bool isExe = !isDir && n.size() > 4 &&
                      _stricmp(n.c_str() + n.size() - 4, ".exe") == 0;
+        bool isBAT = !isDir && n.size() > 4 &&
+                     _stricmp(n.c_str() + n.size() - 4, ".bat") == 0;
 
         if (isDir)
             setColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-        else if (isExe) {
+        else if (isExe || isBAT) {
             setColor(FOREGROUND_BLUE | FOREGROUND_INTENSITY);
             n = n.substr(0, n.size() - 4);
         }
@@ -206,34 +366,9 @@ void listDir() {
         resetColor();
 
     } while (FindNextFileA(h, &fd));
+    cout<<"\n";
     FindClose(h);
 }
-
-/* ================= Tool resolver ================= */
-string resolveTool(const string& cmd, string& workdir, bool& isPython) {
-    isPython = false;
-    auto paths = splitPATH();
-    paths.push_back(".");
-
-    for (auto& p : paths) {
-        string exe = p + "\\" + cmd + ".exe";
-        if (fileExists(exe)) {
-            workdir = p;
-            return "\"" + exe + "\""; // 🔥 exe كما هو
-        }
-
-        string py = p + "\\" + cmd + ".py";
-        if (fileExists(py)) {
-            workdir = p;
-            isPython = true;
-            return "\"" + py + "\"";  // نرجع الملف فقط
-        }
-    }
-
-    workdir.clear();
-    return cmd; // builtin أو أمر عادي
-}
-
 string trim(const string& s) {
     size_t start = s.find_first_not_of(" \t\r\n");
     size_t end   = s.find_last_not_of(" \t\r\n");
@@ -293,13 +428,13 @@ void relaunchAsAdmin(const string& extraArgs = "") {
     sei.cbSize = sizeof(sei);
     sei.fMask  = SEE_MASK_NOCLOSEPROCESS;
     sei.lpVerb = "runas";
-    sei.lpFile = exePath;          // 🔥 تطبيقك نفسه
+    sei.lpFile = exePath;          
     sei.lpParameters = params.c_str();
-    sei.lpDirectory  = cwd;        // 🔥 نفس المسار الحالي
+    sei.lpDirectory  = cwd;        
     sei.nShow = SW_SHOW;
 
     if (ShellExecuteExA(&sei)) {
-        ExitProcess(0); // نغلق النسخة العادية بدون قتل الكونسول الجديدة
+        ExitProcess(0); 
     }
 }
 
@@ -322,7 +457,7 @@ void handleArgs(int argc, char* argv[]) {
         }
     }
 
-    // طلب admin ونحن لسنا admin → إعادة تشغيل
+
     if (wantAdmin && !isRunningAsAdmin()) {
         string extra;
         if (hasCommand) {
@@ -332,18 +467,15 @@ void handleArgs(int argc, char* argv[]) {
         return;
     }
 
-    // نحن هنا:
-    // - إما admin
-    // - أو لا نحتاج admin
+
 
     if (wantAdmin && isRunningAsAdmin()) {
         isRoot = true;
     }
 
-    // تنفيذ -c
     if (hasCommand) {
         executeCommand(command);
-        running = false; // مثل cmd /c
+        running = false; 
     }
 }
 DWORD originalConsoleMode;
@@ -358,7 +490,7 @@ void setShellConsoleMode() {
     mode |= ENABLE_EXTENDED_FLAGS;
     mode |= ENABLE_QUICK_EDIT_MODE;
     mode |= ENABLE_MOUSE_INPUT;
-    mode &= ~ENABLE_PROCESSED_INPUT; // فقط هنا
+    mode &= ~ENABLE_PROCESSED_INPUT; 
 
     SetConsoleMode(hIn, mode);
 }
@@ -366,7 +498,7 @@ void setInteractiveConsoleMode() {
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     DWORD mode = originalConsoleMode;
 
-    mode |= ENABLE_PROCESSED_INPUT;   // 🔥 ضروري
+    mode |= ENABLE_PROCESSED_INPUT;   
     mode |= ENABLE_LINE_INPUT;
     mode |= ENABLE_ECHO_INPUT;
 
@@ -443,7 +575,6 @@ bool runProcessInteractive(const std::string& command)
     PROCESS_INFORMATION pi{};
     si.cb = sizeof(si);
 
-    // وراثة stdin / stdout / stderr
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
     si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -457,7 +588,7 @@ bool runProcessInteractive(const std::string& command)
         cmdline,
         nullptr,
         nullptr,
-        TRUE,   // مهم: توريث الـ handles
+        TRUE,   
         0,
         nullptr,
         nullptr,
@@ -479,7 +610,6 @@ void executeCommand(const string& input) {
     string cmdline = trim(input);
     if (cmdline.empty()) return;
 
-    // sudo su
     if (cmdline == "sudo su") {
         if (!isRunningAsAdmin()) {
             relaunchAsAdmin();
@@ -500,16 +630,16 @@ void executeCommand(const string& input) {
         return;
     }
     
-    // ghost add <cmd>
+
     if (cmdline.rfind("//ghost add ", 0) == 0) {
-        string cmd = cmdline.substr(11); // بعد "ghost add "
+        string cmd = cmdline.substr(11); 
         ghostAdd(trim(cmd));
         return;
     }
 
-    // ghost remove <cmd>
+
     if (cmdline.rfind("//ghost remove ", 0) == 0) {
-        string cmd = cmdline.substr(14); // بعد "ghost remove "
+        string cmd = cmdline.substr(14); 
         ghostRemove(trim(cmd));
         return;
     }
@@ -528,6 +658,7 @@ void executeCommand(const string& input) {
     }
 
     if (cmdline.rfind("cd ", 0) == 0) {
+        actpath = true;
         SetCurrentDirectoryA(cmdline.substr(3).c_str());
         return;
     }
@@ -538,7 +669,7 @@ void executeCommand(const string& input) {
     DWORD oldMode = 0;
     GetConsoleMode(hIn, &oldMode);
 
-    // فصل الأمر عن الوسائط
+
     std::string base = cmd.substr(0, cmd.find(' '));
     std::string args = (cmd.find(' ') != std::string::npos)
         ? cmd.substr(cmd.find(' ') + 1)
@@ -547,11 +678,14 @@ void executeCommand(const string& input) {
     char found[MAX_PATH]{};
     bool isExe = false;
     bool isPy  = false;
+    bool isBat = false;
 
     if (SearchPathA(NULL, (base + ".exe").c_str(), NULL, MAX_PATH, found, NULL))
         isExe = true;
     else if (SearchPathA(NULL, (base + ".py").c_str(), NULL, MAX_PATH, found, NULL))
         isPy = true;
+    else if (SearchPathA(NULL, (base + ".bat").c_str(), NULL, MAX_PATH, found, NULL))
+        isBat = true;
     setInteractiveConsoleMode();
     STARTUPINFOA si{};
     PROCESS_INFORMATION pi{};
@@ -562,9 +696,7 @@ void executeCommand(const string& input) {
     si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
     BOOL ok = FALSE;
 
-    /* =====================================================
-       1️⃣ Python script → تشغيل مباشر ثم RETURN
-       ===================================================== */
+
     if (isPy) {
         std::string exec =
             "python \"" + std::string(found) + "\"" +
@@ -590,12 +722,36 @@ void executeCommand(const string& input) {
         }
 
         SetConsoleMode(hIn, oldMode);
-        return; // 🔥 مهم جداً
+        return; 
+    }
+    if (isBat) {
+        std::string exec =
+            "cmd /c \"" + std::string(found) + "\"" +
+            (args.empty() ? "" : " " + args);
+
+        ok = CreateProcessA(
+            NULL,
+            &exec[0],
+            NULL, NULL,
+            TRUE,
+            CREATE_NEW_PROCESS_GROUP,
+            NULL, NULL,
+            &si, &pi
+        );
+
+        if (ok) {
+            child = pi;
+            childAlive = true;
+            WaitForSingleObject(pi.hProcess, INFINITE);
+            childAlive = false;
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+
+        SetConsoleMode(hIn, oldMode);
+        return; 
     }
 
-    /* =====================================================
-       2️⃣ EXE حقيقي → تشغيل مباشر ثم RETURN
-       ===================================================== */
     if (isExe) {
         std::string exec =
             "\"" + std::string(found) + "\"" +
@@ -621,12 +777,8 @@ void executeCommand(const string& input) {
         }
 
         SetConsoleMode(hIn, oldMode);
-        return; // 🔥 مهم جداً
+        return; 
     }
-
-    /* =====================================================
-       3️⃣ CMD داخلي (بدون إظهار خطأ)
-       ===================================================== */
     {
         std::string cmdExec = "cmd.exe /c " + cmd + " 2>nul";
 
@@ -654,14 +806,12 @@ void executeCommand(const string& input) {
             if (exitCode == 0) {
                 SetConsoleMode(hIn, oldMode);
                 
-                return; // نجح CMD → لا نكمل
+                return; 
             }
         }
     }
 
-    /* =====================================================
-       4️⃣ PowerShell فقط إذا CMD فشل
-       ===================================================== */
+
     {
         setShellConsoleMode();
         std::string psExec =
@@ -701,8 +851,8 @@ void enableCopyMode() {
 
     mode |= ENABLE_EXTENDED_FLAGS;
     mode |= ENABLE_QUICK_EDIT_MODE;
-    mode |= ENABLE_MOUSE_INPUT;      // مهم
-    mode &= ~ENABLE_PROCESSED_INPUT; // مهم جدًا
+    mode |= ENABLE_MOUSE_INPUT;      
+    mode &= ~ENABLE_PROCESSED_INPUT; 
 
     SetConsoleMode(hIn, mode);
 }
@@ -712,7 +862,7 @@ int historySize = 0;
 void pushHistory(const string& cmd) {
     if (cmd.empty()) return;
 
-    // منع تكرار نفس الأمر مباشرة
+
     if (!history.empty() && history[0] == cmd)
         return;
 
@@ -724,7 +874,7 @@ void pushHistory(const string& cmd) {
     if (historySize < 10)
         historySize++;
 
-    historyIndex = -1; // إعادة المؤشر
+    historyIndex = -1; 
 }
 BOOL WINAPI CtrlHandler(DWORD ctrlType)
 {
@@ -735,17 +885,15 @@ BOOL WINAPI CtrlHandler(DWORD ctrlType)
         {
             if (childAlive && child.hProcess)
             {
-                // نمنع التيرمينال من استقبال Ctrl+C
+
                 SetConsoleCtrlHandler(NULL, TRUE);
 
-                // نرسل Ctrl+C لكل العمليات المرتبطة بالكونسول
-                // (أفضل خيار بدون تعديل executeCommand)
                 GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0);
 
-                // ننتظر قليلًا
+
                 WaitForSingleObject(child.hProcess, 1000);
 
-                // إذا ما توقف → نقتله قسريًا
+
                 DWORD code = 0;
                 if (GetExitCodeProcess(child.hProcess, &code) &&
                     code == STILL_ACTIVE)
@@ -777,7 +925,7 @@ BOOL WINAPI CtrlHandler(DWORD ctrlType)
 
                 SetConsoleCtrlHandler(NULL, FALSE);
 
-                // ❗ نمنع إغلاق التيرمينال
+
                 return TRUE;
             }
             return TRUE;
@@ -787,8 +935,26 @@ BOOL WINAPI CtrlHandler(DWORD ctrlType)
     return FALSE;
 }
 
+void fixWrappedCursor()
+{
+    CONSOLE_SCREEN_BUFFER_INFO cs;
+    GetConsoleScreenBufferInfo(hOut, &cs);
 
-/* ================= Main ================= */
+    SHORT width = cs.dwSize.X;
+
+    if (inputStartX + cursorPos >= width) {
+        SHORT linesDown = (inputStartX + cursorPos) / width;
+        inputStartX = (inputStartX + cursorPos) % width;
+
+        COORD newPos;
+        newPos.X = inputStartX;
+        newPos.Y = cs.dwCursorPosition.Y + linesDown;
+
+        SetConsoleCursorPosition(hOut, newPos);
+    }
+}
+
+
 int main(int argc, char* argv[]) {
     hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     enableCopyMode();
@@ -805,14 +971,14 @@ int main(int argc, char* argv[]) {
         while (true) {
             int ch = _getch();
 
-            if (ch == 13) break;      // Enter
+            if (ch == 13) break;      
             
 
             if (ch == 224) {
                 ch = _getch();
-                if (ch == 75 && cursorPos > 0) cursorPos--;        // ←
-                if (ch == 77 && cursorPos < buffer.size()) cursorPos++; // →
-                if (ch == 72) { // UP
+                if (ch == 75 && cursorPos > 0) cursorPos--;       
+                if (ch == 77 && cursorPos < buffer.size()) cursorPos++; 
+                if (ch == 72) { 
                     if (historySize == 0) continue;
                     if (historyIndex + 1 < historySize)
                         historyIndex++;
@@ -822,7 +988,7 @@ int main(int argc, char* argv[]) {
                     redrawLine();
                     continue;
                 }
-                if (ch == 80) { // DOWN
+                if (ch == 80) { 
                     if (historyIndex > 0) {
                         historyIndex--;
                         buffer = history[historyIndex];
