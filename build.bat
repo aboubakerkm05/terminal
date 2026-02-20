@@ -1,0 +1,1 @@
+g++ terminal.cpp terminal.res -o terminal -static -static-libgcc -static-libstdc++
